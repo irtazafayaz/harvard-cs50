@@ -1,16 +1,21 @@
 import sys
 import heapq
 
-class Node():
+
+class Node:
     def __init__(self, state, parent, action, g=0, h=0):
-        self.state = state 
-        self.parent = parent 
+        self.state = state
+        self.parent = parent
         self.action = action
         self.g = g
-        self.h = h 
+        self.h = h
         self.f = g + h
 
-class StackFrontier():
+    def __lt__(self, other):
+        return self.f < other.f
+
+
+class StackFrontier:
     def __init__(self):
         self.frontier = []
 
@@ -19,10 +24,10 @@ class StackFrontier():
 
     def contains_state(self, state):
         return any(node.state == state for node in self.frontier)
-    
+
     def empty(self):
         return len(self.frontier) == 0
-    
+
     def remove(self):
         if self.empty():
             raise Exception("=> empty frontier")
@@ -30,8 +35,9 @@ class StackFrontier():
             node = self.frontier[-1]
             self.frontier = self.frontier[:-1]
             return node
-        
-class QueueFrontier(StackFrontier): 
+
+
+class QueueFrontier(StackFrontier):
     def remove(self):
         if self.empty():
             raise Exception("frontier empty")
@@ -40,7 +46,8 @@ class QueueFrontier(StackFrontier):
             self.frontier = self.frontier[1:]
             return node
 
-class PriorityQueueFrontier():
+
+class PriorityQueueFrontier:
     def __init__(self):
         self.frontier = []
         self.entry_finder = {}
@@ -56,7 +63,7 @@ class PriorityQueueFrontier():
 
     def empty(self):
         return len(self.frontier) == 0
-    
+
     def remove(self):
         while self.frontier:
             f, node = heapq.heappop(self.frontier)
@@ -65,7 +72,8 @@ class PriorityQueueFrontier():
                 return node
         raise Exception("-- empty frontier")
 
-class Maze():
+
+class Maze:
 
     def __init__(self, filename):
 
@@ -116,10 +124,10 @@ class Maze():
                     print("▓", end="")  # Medium shaded block
                 elif (i, j) == self.start:
                     print("A", end="")
-                elif(i, j) ==self.goal:
-                    print("B", end = "")
+                elif (i, j) == self.goal:
+                    print("B", end="")
                 elif solution is not None and (i, j) in solution:
-                    print("*", end = "")
+                    print("*", end="")
                 else:
                     print(" ", end="")
             print()
@@ -131,7 +139,7 @@ class Maze():
             ("up", (row - 1, col)),
             ("down", (row + 1, col)),
             ("left", (row, col - 1)),
-            ("right", (row, col + 1))
+            ("right", (row, col + 1)),
         ]
 
         result = []
@@ -139,10 +147,63 @@ class Maze():
             if 0 <= r < self.height and 0 <= c < self.width and not self.walls[r][c]:
                 result.append((action, (r, c)))
         return result
-    
+
+    def heuristic(self, state):
+        print(state)
+        row1, col1 = state
+        row2, col2 = self.goal
+        return abs(row1 - row2) + abs(col1 - col2)  # Manhattan distance
+
     def solve(self):
 
-        """ Find a solution to maze, if it exists """
+        self.num_explored = 0
+        start = Node(
+            state=self.start,
+            parent=None,
+            action=None,
+            g=0,
+            h=self.heuristic(self.start),
+        )
+        frontier = PriorityQueueFrontier()
+        frontier.add(start)
+        self.explored = set()
+
+        while True:
+            if frontier.empty():
+                raise Exception("no solution")
+
+            node = frontier.remove()
+            self.num_explored += 1
+
+            if self.goal == node.state:
+                actions = []
+                cells = []
+
+                while node.parent is not None:
+                    cells.append(node.state)
+                    actions.append(node.action)
+
+                    node = node.parent
+                cells.reverse()
+                actions.reverse()
+                self.solution = (actions, cells)
+                return
+
+            self.explored.add(node.state)
+
+            for action, state in self.neighbors(node.state):
+                if not frontier.contains(state) and state not in self.explored:
+                    new_node = Node(
+                        state=state,
+                        parent=node,
+                        action=action,
+                        g=node.g + 1,
+                        h=self.heuristic(state),
+                    )
+                    frontier.add(new_node)
+
+    def solve_using_uninformed(self):
+        """Find a solution to maze, if it exists"""
 
         # Keep track of number of states explored (Info purposes)
         self.num_explored = 0
@@ -159,10 +220,10 @@ class Maze():
 
             if frontier.empty():
                 raise Exception("no solution")
-            
+
             node = frontier.remove()
             self.num_explored += 1
-            
+
             if self.goal == node.state:
                 # Explore the path
                 actions = []
@@ -186,54 +247,57 @@ class Maze():
                     frontier.add(child)
 
     def output_image(self, filename, show_solution=True, show_explored=False):
-        from PIL import Image, ImageDraw
+        from PIL import Image, ImageDraw, ImageFont
+
         cell_size = 50
         cell_border = 2
 
-        # Create a blank canvas
+        # Try to load a default font
+        try:
+            font = ImageFont.truetype("arial.ttf", 14)
+        except:
+            font = ImageFont.load_default()
+
         img = Image.new(
-            "RGBA",
-            (self.width * cell_size, self.height * cell_size),
-            "black"
+            "RGBA", (self.width * cell_size, self.height * cell_size), "black"
         )
         draw = ImageDraw.Draw(img)
 
         solution = self.solution[1] if self.solution is not None else None
         for i, row in enumerate(self.walls):
             for j, col in enumerate(row):
+                x0 = j * cell_size + cell_border
+                y0 = i * cell_size + cell_border
+                x1 = (j + 1) * cell_size - cell_border
+                y1 = (i + 1) * cell_size - cell_border
+                box = [(x0, y0), (x1, y1)]
 
                 # Walls
                 if col:
                     fill = (40, 40, 40)
-
                 # Start
                 elif (i, j) == self.start:
                     fill = (255, 0, 0)
-
                 # Goal
                 elif (i, j) == self.goal:
                     fill = (0, 171, 28)
-
                 # Solution
                 elif solution is not None and show_solution and (i, j) in solution:
                     fill = (220, 235, 113)
-
                 # Explored
                 elif solution is not None and show_explored and (i, j) in self.explored:
                     fill = (212, 97, 85)
-
-                # Empty cell
                 else:
                     fill = (237, 240, 252)
 
-                # Draw cell
-                draw.rectangle(
-                    ([(j * cell_size + cell_border, i * cell_size + cell_border),
-                      ((j + 1) * cell_size - cell_border, (i + 1) * cell_size - cell_border)]),
-                    fill=fill
-                )
+                draw.rectangle(box, fill=fill)
 
-        img.save(filename)
+                # Draw heuristic value on non-wall, non-start, non-goal cells
+                if not col and (i, j) != self.start and (i, j) != self.goal:
+                    h_val = self.heuristic((i, j))
+                    draw.text((x0 + 5, y0 + 5), str(h_val), fill=(0, 0, 0), font=font)
+
+            img.save(filename)
 
 
 if len(sys.argv) != 2:
